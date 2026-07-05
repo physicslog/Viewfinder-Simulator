@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Viewfinder Simulator | © 2026 Damodar's Log | rDamodar.com.np </title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* --- Color Scheme--- */
+        :root {
+            /* Light Mode Defaults */
+            --text-main: #1a202c;
+            --text-muted: #6c757d;
+            --box-bg: rgba(0, 0, 0, 0.05);
+            --box-border: rgba(0, 0, 0, 0.1);
+            --slider-track: #dee2e6;
+            --slider-thumb: #ffffff;
+            --slider-thumb-border: #1a202c;
+            --meter-border: rgba(0, 0, 0, 0.15);
+        }
+
+        /* Base typography */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: transparent !important;
+            color: var(--text-main);
+            transition: color 0.3s ease;
+        }
+
+        /* Continuous Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 28px;
+            width: 12px;
+            border: 2px solid var(--slider-thumb-border);
+            border-radius: 8px;
+            background: var(--slider-thumb);
+            cursor: pointer;
+            margin-top: -12px;
+            transition: border-color 0.3s ease, background 0.3s ease;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: var(--slider-track);
+            border-radius: 2px;
+            transition: background 0.3s ease;
+        }
+        input[type=range]:focus { outline: none; }
+
+        /* SVG Noise Filter Overlay */
+        .noise-bg {
+            background-image: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+            mix-blend-mode: overlay;
+        }
+
+        /* Animation to move objects across the screen */
+        @keyframes moveRight {
+            0% { transform: translateX(-200px); }
+            100% { transform: translateX(1000px); }
+        }
+
+        /* Running articulation animations */
+        @keyframes run-swing-fwd {
+            0%, 100% { transform: rotate(-45deg); }
+            50% { transform: rotate(45deg); }
+        }
+        @keyframes run-swing-bwd {
+            0%, 100% { transform: rotate(45deg); }
+            50% { transform: rotate(-45deg); }
+        }
+        @keyframes run-bounce {
+            0%, 50%, 100% { transform: translateY(0); }
+            25%, 75% { transform: translateY(-8px); }
+        }
+
+        /* Joint transforms for SVG parts */
+        .joint-shoulder { transform-origin: 0px 286px; }
+        .joint-hip { transform-origin: 0px 350px; }
+
+        .runner-body { animation: run-bounce 0.5s ease-in-out infinite; }
+        .arm-front { animation: run-swing-fwd 0.5s ease-in-out infinite; }
+        .arm-back { animation: run-swing-bwd 0.5s ease-in-out infinite; }
+        .leg-front { animation: run-swing-bwd 0.5s ease-in-out infinite; }
+        .leg-back { animation: run-swing-fwd 0.5s ease-in-out infinite; }
+
+        /* Responsive Viewfinder Area */
+        .aspect-responsive {
+            aspect-ratio: 4 / 3;
+            width: 100%;
+            background-color: #000;
+            position: relative;
+            overflow: hidden;
+            border-bottom: 1px solid var(--meter-border);
+            margin-bottom: 0.5rem;
+        }
+
+        /* Custom UI element overrides */
+        .value-box {
+            width: 70px;
+            background-color: var(--box-bg);
+            border: 1px solid var(--box-border);
+            border-radius: 8px;
+            padding: 8px 0;
+            text-align: center;
+            font-size: 0.875rem;
+            color: var(--text-main);
+            font-family: monospace;
+            transition: all 0.3s ease;
+        }
+
+        .light-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-muted);
+            padding: 4px 16px;
+            border-radius: 50rem;
+            font-size: 0.875rem;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .light-btn:hover { color: var(--text-main); }
+        .light-btn.active-light {
+            border-color: var(--slider-thumb-border);
+            color: var(--text-main);
+            background-color: var(--box-bg);
+        }
+
+        .sensor-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-muted);
+            padding: 4px 12px;
+            border-radius: 50rem;
+            font-size: 0.75rem;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .sensor-btn:hover { color: var(--text-main); }
+        .sensor-btn.active-sensor {
+            border-color: var(--slider-thumb-border);
+            color: var(--text-main);
+            background-color: var(--box-bg);
+        }
+
+        .meter-border { border-color: var(--meter-border) !important; transition: border-color 0.3s ease; }
+        .text-muted-adaptive { color: var(--text-muted); transition: color 0.3s ease; }
+
+        /* EV Display */
+        .ev-display {
+            display: flex;
+            justify-content: space-around;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            background-color: var(--box-bg);
+            border-radius: 8px;
+            border: 1px solid var(--box-border);
+            flex-wrap: wrap;
+        }
+
+        .ev-item {
+            text-align: center;
+            flex: 1;
+            min-width: 70px;
+        }
+
+        .ev-item-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.15rem;
+        }
+
+        .ev-item-value {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-main);
+            font-family: monospace;
+        }
+
+        /* Tooltip */
+        .tooltip-text {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 0.15rem;
+        }
+
+        /* Sensor Info Box */
+        .sensor-info {
+            display: flex;
+            justify-content: space-around;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            background-color: var(--box-bg);
+            border-radius: 8px;
+            border: 1px solid var(--box-border);
+            flex-wrap: wrap;
+        }
+
+        .sensor-info-item {
+            text-align: center;
+            flex: 1;
+            min-width: 90px;
+        }
+
+        .sensor-info-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.15rem;
+        }
+
+        .sensor-info-value {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-main);
+            font-family: monospace;
+        }
+
+        /* Zoom effect indicator */
+        .zoom-indicator {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            margin-top: 0.15rem;
+        }
+
+        /* Sensor selector */
+        .sensor-selector {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* Slider container */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .slider-label {
+            font-size: 0.8rem;
+            flex-shrink: 0;
+            width: 100px;
+        }
+
+        .slider-input {
+            flex-grow: 1;
+        }
+
+        /* Meter */
+        .meter-box {
+            text-align: center;
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .meter-box p {
+            margin-bottom: 0.25rem;
+            font-size: 0.85rem;
+        }
+
+        .meter-status {
+            font-weight: 500;
+            letter-spacing: 0.025em;
+        }
+
+        .meter-ev {
+            font-size: 0.75rem;
+            margin-top: 0.25rem;
+        }
+
+        /* Main layout */
+        .main-wrapper {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+
+        .viewfinder-section {
+            flex: 0 0 auto;
+            min-width: 0;
+        }
+
+        .controls-section {
+            flex: 1;
+            min-width: 0;
+            overflow-y: auto;
+            max-height: 90vh;
+            padding-right: 0.5rem;
+        }
+
+        .controls-section::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .controls-section::-webkit-scrollbar-track {
+            background: var(--box-bg);
+            border-radius: 3px;
+        }
+
+        .controls-section::-webkit-scrollbar-thumb {
+            background: var(--slider-track);
+            border-radius: 3px;
+        }
+
+        .controls-section::-webkit-scrollbar-thumb:hover {
+            background: var(--slider-thumb-border);
+        }
+
+        @media (max-width: 1200px) {
+            .main-wrapper {
+                flex-direction: column;
+            }
+
+            .controls-section {
+                max-height: none;
+            }
+        }
+    </style>
+</head>
+<body class="bg-transparent">
+
+    <div class="container-fluid py-2 px-2 px-md-3">
+
+        <div class="main-wrapper">
+
+            <div class="viewfinder-section mx-5">
+                <div class="aspect-responsive">
+                    <div id="scene-brightness" class="w-100 h-100 position-relative" style="transition: all 0.075s ease; transform-origin: center;">
+                        <svg id="main-svg" viewBox="0 0 800 600" class="w-100 h-100" preserveAspectRatio="xMidYMid slice" style="object-fit: cover; transition: transform 0.3s ease;">
+                            <defs>
+                                <filter id="motionBlur" x="-100%" y="-100%" width="300%" height="300%">
+                                    <feGaussianBlur id="motionBlurElement" in="SourceGraphic" stdDeviation="0 0" />
+                                </filter>
+                                <filter id="bgBlur" x="-20%" y="-20%" width="140%" height="140%">
+                                    <feGaussianBlur id="bgBlurElement" in="SourceGraphic" stdDeviation="0" />
+                                </filter>
+                            </defs>
+
+                            <g filter="url(#bgBlur)">
+                                <rect id="bg-sky" width="800" height="400" fill="#8cbde5" style="transition: fill 0.5s ease;"/>
+                                <circle id="bg-sun" cx="620" cy="120" r="70" fill="#ebd74e" style="transition: fill 0.5s ease, cy 0.5s ease;"/>
+                                <polygon id="bg-mountain-1" points="-100,400 250,90 550,400" fill="#4d6bad" style="transition: fill 0.5s ease;"/>
+                                <polygon id="bg-mountain-2" points="400,400 600,150 850,400" fill="#1b2e66" style="transition: fill 0.5s ease;"/>
+                                <text x="40" y="60" fill="#ffffff" font-size="24" opacity="0.6">Background</text>
+                            </g>
+
+                            <rect id="bg-ground" x="0" y="400" width="800" height="200" fill="#292931" style="transition: fill 0.5s ease; filter: url(#bgBlur);"/>
+
+                            <g filter="url(#motionBlur)">
+                                <g id="moving-subject" stroke="#ffffff" stroke-width="8" stroke-linecap="round" fill="none" stroke-linejoin="round" style="animation: moveRight 3s linear infinite;">
+                                    <g id="subj-runner" class="runner-body">
+                                        <line class="arm-back joint-shoulder" x1="0" y1="286" x2="-35" y2="330" stroke="#ccc" stroke-width="6"/>
+                                        <line class="leg-back joint-hip" x1="0" y1="350" x2="-30" y2="410" stroke="#ccc" stroke-width="7"/>
+                                        <circle cx="0" cy="270" r="16" fill="none" stroke-width="6"/>
+                                        <line x1="0" y1="286" x2="0" y2="350" />
+                                        <line class="arm-front joint-shoulder" x1="0" y1="286" x2="35" y2="330" stroke="#fff" />
+                                        <line class="leg-front joint-hip" x1="0" y1="350" x2="30" y2="410" stroke="#fff" />
+                                    </g>
+                                </g>
+                            </g>
+                        </svg>
+                    </div>
+                    <div id="noise-overlay" class="position-absolute top-0 start-0 w-100 h-100 noise-bg opacity-0 pe-none" style="transition: opacity 0.075s ease;"></div>
+                </div>
+            </div>
+
+            <div class="controls-section">
+
+                <div class="d-flex align-items-center justify-content-center gap-2 mb-2 flex-wrap">
+                    <span class="small text-muted-adaptive me-2 text-uppercase" style="letter-spacing: 0.05em; font-size: 0.75rem;">Lighting:</span>
+                    <button class="btn light-btn active-light" data-light="sunny">Sunny</button>
+                    <button class="btn light-btn" data-light="cloudy">Cloudy</button>
+                    <button class="btn light-btn" data-light="sunset">Sunset</button>
+                    <button class="btn light-btn" data-light="night">Night</button>
+                </div>
+
+                <div class="sensor-selector">
+                    <span class="small text-muted-adaptive me-2 text-uppercase" style="letter-spacing: 0.05em; font-size: 0.75rem;">Sensor:</span>
+                    <button class="btn sensor-btn active-sensor" data-sensor="full-frame">Full Frame</button>
+                    <button class="btn sensor-btn" data-sensor="aps-c">APS-C</button>
+                    <button class="btn sensor-btn" data-sensor="micro-four-thirds">Micro 4/3</button>
+                    <button class="btn sensor-btn" data-sensor="one-inch">1-inch</button>
+                </div>
+
+                 <div class="ev-display">
+                    <div class="ev-item">
+                        <div class="ev-item-label">Aperture EV</div>
+                        <div class="ev-item-value" id="ev-aperture">0.0</div>
+                    </div>
+                    <div class="ev-item">
+                        <div class="ev-item-label">Shutter EV</div>
+                        <div class="ev-item-value" id="ev-shutter">0.0</div>
+                    </div>
+                    <div class="ev-item">
+                        <div class="ev-item-label">ISO EV</div>
+                        <div class="ev-item-value" id="ev-iso">0.0</div>
+                    </div>
+                    <div class="ev-item">
+                        <div class="ev-item-label">Total EV</div>
+                        <div class="ev-item-value" id="ev-total">0.0</div>
+                    </div>
+                </div>
+
+                 <div class="meter-box meter-border">
+                    <p class="text-muted-adaptive small mb-0">Exposure Meter</p>
+                    <p id="meter-status" class="mb-0 meter-status">Balanced</p>
+                    <p id="meter-ev" class="text-muted-adaptive meter-ev mb-0">EV Difference: 0.0</p>
+                </div>
+
+                <div class="mb-2">
+                    <div class="slider-container">
+                        <label class="slider-label">Focal Length</label>
+                        <input type="range" id="focal-length" min="14" max="200" step="1" value="14" class="slider-input">
+                        <div id="focal-length-display" class="value-box">14mm</div>
+                    </div>
+                    <div class="tooltip-text">Actual focal length of a lens (sensor-independent)</div>
+
+                    <div class="slider-container">
+                        <label class="slider-label">Aperture(f-stop)</label>
+                        <input type="range" id="aperture" min="0" max="8" step="0.1" value="4" class="slider-input">
+                        <div id="aperture-val" class="value-box">f/5.6</div>
+                    </div>
+                    <div class="tooltip-text">Smaller f-number = larger opening = shallower DOF</div>
+
+                    <div class="slider-container">
+                        <label class="slider-label">Shutter (1/x sec)</label>
+                        <input type="range" id="shutter" min="0" max="13" step="0.1" value="6" class="slider-input">
+                        <div id="shutter-val" class="value-box">1/64</div>
+                    </div>
+                    <div class="tooltip-text">Slower shutter = more motion blur = more light</div>
+
+                    <div class="slider-container">
+                        <label class="slider-label">ISO</label>
+                        <input type="range" id="iso" min="0" max="10" step="0.1" value="2" class="slider-input">
+                        <div id="iso-val" class="value-box">ISO 400</div>
+                    </div>
+                    <div class="tooltip-text">Higher ISO = more sensitivity = more noise</div>
+                </div>
+
+                <div class="sensor-info">
+                    <div class="sensor-info-item">
+                        <div class="sensor-info-label">Sensor Type</div>
+                        <div class="sensor-info-value" id="sensor-type-val">Full Frame</div>
+                        <div class="zoom-indicator" id="sensor-crop-factor">1.0× crop</div>
+                    </div>
+                    <div class="sensor-info-item">
+                        <div class="sensor-info-label">Effective FL</div>
+                        <div class="sensor-info-value" id="effective-focal-length">50mm</div>
+                        <div class="zoom-indicator">Equiv.</div>
+                    </div>
+                    <div class="sensor-info-item">
+                        <div class="sensor-info-label">ISO Range</div>
+                        <div class="sensor-info-value" id="iso-range">100–102400</div>
+                        <div class="zoom-indicator" id="fov-val">47°</div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // --- Sensor Configuration with ISO Ranges ---
+        const sensorConfigs = {
+            'full-frame': {
+                name: 'Full Frame',
+                cropFactor: 1.0,
+                diagonal: 43.3,
+                width: 36,
+                height: 24,
+                isoMin: 100,
+                isoMax: 102400,
+                isoStops: 10
+            },
+            'aps-c': {
+                name: 'APS-C',
+                cropFactor: 1.5,
+                diagonal: 28.9,
+                width: 23.8,
+                height: 15.8,
+                isoMin: 100,
+                isoMax: 51200,
+                isoStops: 9
+            },
+            'micro-four-thirds': {
+                name: 'Micro 4/3',
+                cropFactor: 2.0,
+                diagonal: 21.6,
+                width: 17.3,
+                height: 13,
+                isoMin: 100,
+                isoMax: 25600,
+                isoStops: 8
+            },
+            'one-inch': {
+                name: '1-inch',
+                cropFactor: 2.7,
+                diagonal: 16.0,
+                width: 13.2,
+                height: 8.8,
+                isoMin: 100,
+                isoMax: 12800,
+                isoStops: 7
+            }
+        };
+
+        let currentSensor = 'full-frame';
+        let SENSOR_DIAGONAL = sensorConfigs['full-frame'].diagonal;
+        let CROP_FACTOR = sensorConfigs['full-frame'].cropFactor;
+        let ISO_MIN = sensorConfigs['full-frame'].isoMin;
+        let ISO_MAX = sensorConfigs['full-frame'].isoMax;
+        let ISO_STOPS = sensorConfigs['full-frame'].isoStops;
+
+        // --- Lighting Selection Logic ---
+        const lightBtns = document.querySelectorAll('.light-btn');
+        const sensorBtns = document.querySelectorAll('.sensor-btn');
+        const bgSky = document.getElementById('bg-sky');
+        const bgSun = document.getElementById('bg-sun');
+        const bgMountain1 = document.getElementById('bg-mountain-1');
+        const bgMountain2 = document.getElementById('bg-mountain-2');
+        const bgGround = document.getElementById('bg-ground');
+
+        const lightingConfig = {
+            sunny: {
+                targetEV: 15,
+                colors: { sky: '#8cbde5', sun: '#ebd74e', m1: '#4d6bad', m2: '#1b2e66', ground: '#292931', sunY: 120 }
+            },
+            cloudy: {
+                targetEV: 12,
+                colors: { sky: '#94a3b8', sun: '#cbd5e1', m1: '#64748b', m2: '#334155', ground: '#1e293b', sunY: 120 }
+            },
+            sunset: {
+                targetEV: 10,
+                colors: { sky: '#fca5a5', sun: '#f97316', m1: '#991b1b', m2: '#450a0a', ground: '#171717', sunY: 280 }
+            },
+            night: {
+                targetEV: 5,
+                colors: { sky: '#020617', sun: '#f1f5f9', m1: '#0f172a', m2: '#000000', ground: '#0a0a0a', sunY: 100 }
+            }
+        };
+
+        let TARGET_EV = lightingConfig.sunny.targetEV;
+
+        lightBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                lightBtns.forEach(b => b.classList.remove('active-light'));
+                this.classList.add('active-light');
+
+                const selectedKey = this.dataset.light;
+                const config = lightingConfig[selectedKey];
+                TARGET_EV = config.targetEV;
+
+                bgSky.setAttribute('fill', config.colors.sky);
+                bgSun.setAttribute('fill', config.colors.sun);
+                bgSun.setAttribute('cy', config.colors.sunY);
+                bgMountain1.setAttribute('fill', config.colors.m1);
+                bgMountain2.setAttribute('fill', config.colors.m2);
+                bgGround.setAttribute('fill', config.colors.ground);
+
+                updateExposure();
+            });
+        });
+
+        // --- Sensor Selection Logic ---
+        sensorBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                sensorBtns.forEach(b => b.classList.remove('active-sensor'));
+                this.classList.add('active-sensor');
+
+                const selectedSensor = this.dataset.sensor;
+                const config = sensorConfigs[selectedSensor];
+
+                currentSensor = selectedSensor;
+                SENSOR_DIAGONAL = config.diagonal;
+                CROP_FACTOR = config.cropFactor;
+                ISO_MIN = config.isoMin;
+                ISO_MAX = config.isoMax;
+                ISO_STOPS = config.isoStops;
+
+                const isoSlider = document.getElementById('iso');
+                isoSlider.max = ISO_STOPS;
+
+                updateExposure();
+            });
+        });
+
+        const focalLengthSlider = document.getElementById('focal-length');
+        const apertureSlider = document.getElementById('aperture');
+        const shutterSlider = document.getElementById('shutter');
+        const isoSlider = document.getElementById('iso');
+
+        const focalLengthDisplay = document.getElementById('focal-length-display');
+        const sensorTypeVal = document.getElementById('sensor-type-val');
+        const sensorCropFactor = document.getElementById('sensor-crop-factor');
+        const effectiveFocalLength = document.getElementById('effective-focal-length');
+        const isoRangeDisplay = document.getElementById('iso-range');
+        const fovVal = document.getElementById('fov-val');
+
+        const apertureVal = document.getElementById('aperture-val');
+        const shutterVal = document.getElementById('shutter-val');
+        const isoVal = document.getElementById('iso-val');
+
+        const evAperture = document.getElementById('ev-aperture');
+        const evShutter = document.getElementById('ev-shutter');
+        const evIso = document.getElementById('ev-iso');
+        const evTotal = document.getElementById('ev-total');
+
+        const sceneBrightness = document.getElementById('scene-brightness');
+        const bgBlurElement = document.getElementById('bgBlurElement');
+        const noiseOverlay = document.getElementById('noise-overlay');
+        const motionBlurElement = document.getElementById('motionBlurElement');
+        const meterStatus = document.getElementById('meter-status');
+        const meterEV = document.getElementById('meter-ev');
+        const mainSvg = document.getElementById('main-svg');
+
+        function calculateFOV(focalLength, sensorDiagonal) {
+            return 2 * Math.atan(sensorDiagonal / (2 * focalLength)) * (180 / Math.PI);
+        }
+
+        function formatISO(isoValue) {
+            if (isoValue >= 1000) {
+                return `ISO ${(isoValue / 1000).toFixed(0)}K`;
+            }
+            return `ISO ${Math.round(isoValue)}`;
+        }
+
+        function updateExposure() {
+            const focalLengthSliderVal = parseFloat(focalLengthSlider.value);
+            const apertureSliderVal = parseFloat(apertureSlider.value);
+            const shutterSliderVal = parseFloat(shutterSlider.value);
+            const isoSliderVal = parseFloat(isoSlider.value);
+
+            // 1. Calculate Sensor Information
+            const sensorConfig = sensorConfigs[currentSensor];
+            sensorTypeVal.textContent = sensorConfig.name;
+            sensorCropFactor.textContent = `${CROP_FACTOR.toFixed(1)}× crop`;
+            isoRangeDisplay.textContent = `${formatISO(ISO_MIN)}–${formatISO(ISO_MAX)}`;
+
+            const effectiveFL = focalLengthSliderVal * CROP_FACTOR;
+            effectiveFocalLength.textContent = `${effectiveFL.toFixed(0)}mm`;
+            focalLengthDisplay.textContent = `${Math.round(focalLengthSliderVal)}mm`;
+
+            const fov = calculateFOV(focalLengthSliderVal, SENSOR_DIAGONAL);
+            fovVal.textContent = `${fov.toFixed(1)}°`;
+
+            // Zoom effect scaled based on absolute widest baseline (14mm)
+            // Ensures it scales up correctly and prevents black clipping borders
+            const zoomScale = Math.max(1, effectiveFL / 14);
+            mainSvg.style.transform = `scale(${zoomScale})`;
+
+            // 2. Calculate Real-World Numerical Displays
+            const fStop = 1.4 * Math.pow(Math.SQRT2, apertureSliderVal);
+            apertureVal.textContent = `f/${fStop.toFixed(1)}`;
+
+            const shutterSpeed = Math.pow(2, -shutterSliderVal);
+            shutterVal.textContent = shutterSpeed >= 1 ? `${shutterSpeed.toFixed(1)}"` : `1/${Math.round(1 / shutterSpeed)}`;
+
+            const isoValue = ISO_MIN * Math.pow(2, isoSliderVal);
+            isoVal.textContent = formatISO(isoValue);
+
+            // 3. Calculate EV Components
+            const evFromAperture = 2 * Math.log2(fStop);
+            const evFromShutter = -Math.log2(shutterSpeed); // Shutter EV needs a negative logarithm calculation
+            const evFromISO = Math.log2(isoValue / 100);
+
+            // Calculate the required target EV scene for current settings
+            const totalEV = evFromAperture + evFromShutter - evFromISO;
+
+            evAperture.textContent = evFromAperture.toFixed(1);
+            evShutter.textContent = evFromShutter.toFixed(1);
+            evIso.textContent = evFromISO.toFixed(1);
+            evTotal.textContent = totalEV.toFixed(1);
+
+            // 4. Calculate Exposure Difference
+            const evDifference = TARGET_EV - totalEV;
+
+            // 5. Update Image Visuals
+            let brightnessLevel = Math.pow(2, evDifference);
+            sceneBrightness.style.filter = `brightness(${Math.max(0.1, Math.min(3, brightnessLevel))})`;
+
+            let dofBlur = Math.max(0, ((8 - apertureSliderVal) * 2.5) + (effectiveFL / 40) - (CROP_FACTOR * 0.5));
+            bgBlurElement.setAttribute('stdDeviation', `${dofBlur}`);
+
+            let motionBlur = Math.max(0, (13 - shutterSliderVal) * 2);
+            motionBlurElement.setAttribute('stdDeviation', `${motionBlur} 0`);
+
+            let noiseLevel = Math.max(0, (isoSliderVal / ISO_STOPS) * 0.25);
+            noiseOverlay.style.opacity = noiseLevel;
+
+            // 6. Update Meter State logic
+            // If the Scene (Target EV) is mathematically higher than the required capacity of the lens/sensor (totalEV)
+            // It means more light is pouring in than is necessary, meaning overexposure.
+            if (Math.abs(evDifference) < 0.5) {
+                meterStatus.textContent = "✓ Balanced";
+                meterStatus.style.color = "var(--text-main)";
+            } else if (evDifference > 0) {
+                meterStatus.textContent = `⚠ Overexposed`;
+                meterStatus.style.color = "#dc3545"; // Red
+            } else {
+                meterStatus.textContent = `⚠ Underexposed`;
+                meterStatus.style.color = "#0d6efd"; // Blue
+            }
+
+            meterEV.textContent = `EV Difference: ${evDifference > 0 ? '+' : ''}${evDifference.toFixed(1)}`;
+        }
+
+        focalLengthSlider.addEventListener('input', updateExposure);
+        apertureSlider.addEventListener('input', updateExposure);
+        shutterSlider.addEventListener('input', updateExposure);
+        isoSlider.addEventListener('input', updateExposure);
+
+        updateExposure();
+    </script>
+</body>
+</html>
